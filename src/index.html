@@ -1,22 +1,353 @@
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <link rel="stylesheet" href="styles.css" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>PakePlus App</title>
-        <script type="module" src="/main.js" defer></script>
-    </head>
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+    <title>车辆轨迹回放</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .controls {
+            background: white;
+            padding: 20px;
+            margin: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .file-input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+        
+        .file-input-label {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #4CAF50;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 14px;
+        }
+        
+        .file-input-label:hover {
+            background: #45a049;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #2196F3;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #1976D2;
+        }
+        
+        .btn-warning {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .btn-warning:hover {
+            background: #f57c00;
+        }
+        
+        .btn-success {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #388e3c;
+        }
+        
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #d32f2f;
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .info {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .map-container {
+            margin: 20px;
+            height: 600px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        #container {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .loading-text {
+            color: #2196F3;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚗 车辆轨迹回放系统</h1>
+        <p>上传CSV文件，在地图上回放车辆行驶轨迹</p>
+    </div>
+    
+    <div class="controls">
+        <div class="file-input-wrapper">
+            <input type="file" id="csvFile" class="file-input" accept=".csv" onchange="loadCSVFile(this)" />
+            <label for="csvFile" class="file-input-label">📁 加载轨迹</label>
+        </div>
+        <button id="start" class="btn btn-success" onclick="startAnimation()" disabled>▶️ 开始动画</button>
+        <button id="pause" class="btn btn-warning" onclick="pauseAnimation()" disabled>⏸️ 暂停动画</button>
+        <button id="resume" class="btn btn-primary" onclick="resumeAnimation()" disabled>⏯️ 继续动画</button>
+        <button id="stop" class="btn btn-danger" onclick="stopAnimation()" disabled>⏹️ 停止动画</button>
+        <div class="info">
+            <span id="fileInfo">请选择包含GPS坐标的CSV文件</span>
+            <span id="loadingText" class="loading-text" style="display: none;">⏳ 加载中...</span>
+        </div>
+    </div>
+    
+    <div class="map-container">
+        <div id="container"></div>
+    </div>
+    
+	<script type="text/javascript" src="https://webapi.amap.com/maps?v=2.0&key=b32beed1bf7c70439cdbda91a424135a"></script>
+    <script>
+        let marker, map, polyline, passedPolyline;
+        let lineArr = []; // 轨迹数据数组
+        let isDataLoaded = false;
 
-    <body>
-        <main class="container">
-            <h1>Welcome to PakePlus</h1>
+        // 初始化地图
+        function initMap() {
+            // JSAPI2.0 使用覆盖物动画必须先加载动画插件
+            AMap.plugin('AMap.MoveAnimation', function(){
+                map = new AMap.Map("container", {
+                    resizeEnable: true,
+                    center: [119.306239, 26.075302],
+                    zoom: 11
+                });
+            });
+        }
 
-            <form class="row" id="greet-form">
-                <input id="greet-input" placeholder="Enter a name..." />
-                <button type="submit">Greet</button>
-            </form>
-            <p id="greet-msg"></p>
-        </main>
-    </body>
+        // 加载CSV文件
+        function loadCSVFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            // 显示加载中状态
+            document.getElementById('loadingText').style.display = 'inline';
+            document.getElementById('fileInfo').textContent = `正在加载: ${file.name}`;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const csv = e.target.result;
+                    parseCSVData(csv);
+                    document.getElementById('loadingText').style.display = 'none';
+                    document.getElementById('fileInfo').textContent = `已加载: ${file.name} (${lineArr.length} 个轨迹点)`;
+                } catch (error) {
+                    console.error('解析CSV文件失败:', error);
+                    alert('解析CSV文件失败，请检查文件格式');
+                    document.getElementById('loadingText').style.display = 'none';
+                    document.getElementById('fileInfo').textContent = '文件加载失败，请重新选择';
+                }
+            };
+            
+            reader.onerror = function() {
+                console.error('读取文件失败');
+                alert('读取文件失败');
+                document.getElementById('loadingText').style.display = 'none';
+                document.getElementById('fileInfo').textContent = '文件读取失败，请重新选择';
+            };
+            
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        // 解析CSV数据
+        function parseCSVData(csvText) {
+            const lines = csvText.split('\n');
+            lineArr = [];
+            
+            // 跳过第一行（标题行）
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line) {
+                    const columns = line.split(',');
+                    if (columns.length >= 4) {
+                        const lng = parseFloat(columns[2]); // 第3列是经度
+                        const lat = parseFloat(columns[3]); // 第4列是纬度
+                        
+                        if (!isNaN(lng) && !isNaN(lat)) {
+                            lineArr.push([lng, lat]);
+                        }
+                    }
+                }
+            }
+            
+            if (lineArr.length > 0) {
+                initializeTrack();
+                enableControlButtons();
+                isDataLoaded = true;
+                console.log(`成功加载 ${lineArr.length} 个轨迹点`);
+            } else {
+                alert('未能从CSV文件中解析出有效的轨迹数据');
+            }
+        }
+
+        // 初始化轨迹
+        function initializeTrack() {
+            // 清除之前的标记和轨迹
+            if (marker) {
+                marker.setMap(null);
+            }
+            if (polyline) {
+                polyline.setMap(null);
+            }
+            if (passedPolyline) {
+                passedPolyline.setMap(null);
+            }
+
+            // 创建新的标记
+            marker = new AMap.Marker({
+                map: map,
+                position: lineArr[0],
+                icon: "https://a.amap.com/jsapi_demos/static/demo-center-v2/car.png",
+                offset: new AMap.Pixel(-13, -26),
+            });
+
+            // 绘制轨迹
+            polyline = new AMap.Polyline({
+                map: map,
+                path: lineArr,
+                showDir: true,
+                strokeColor: "#28F",  //线颜色
+                strokeWeight: 6,      //线宽
+            });
+
+            passedPolyline = new AMap.Polyline({
+                map: map,
+                strokeColor: "#AF5",  //线颜色
+                strokeWeight: 6,      //线宽
+            });
+
+            marker.on('moving', function (e) {
+                passedPolyline.setPath(e.passedPath);
+                map.setCenter(e.target.getPosition(), true);
+            });
+
+            // 调整地图视野以适应轨迹
+            map.setFitView();
+        }
+
+        // 启用控制按钮
+        function enableControlButtons() {
+            document.getElementById('start').disabled = false;
+            document.getElementById('pause').disabled = false;
+            document.getElementById('resume').disabled = false;
+            document.getElementById('stop').disabled = false;
+        }
+
+        // 禁用控制按钮
+        function disableControlButtons() {
+            document.getElementById('start').disabled = true;
+            document.getElementById('pause').disabled = true;
+            document.getElementById('resume').disabled = true;
+            document.getElementById('stop').disabled = true;
+        }
+
+        // 动画控制函数
+        window.startAnimation = function() {
+            if (!isDataLoaded) {
+                alert('请先加载轨迹数据');
+                return;
+            }
+            marker.moveAlong(lineArr, {
+                duration: 500,
+                autoRotation: true,
+            });
+        };
+
+        window.pauseAnimation = function() {
+            if (marker) {
+                marker.pauseMove();
+            }
+        };
+
+        window.resumeAnimation = function() {
+            if (marker) {
+                marker.resumeMove();
+            }
+        };
+
+        window.stopAnimation = function() {
+            if (marker) {
+                marker.stopMove();
+            }
+        };
+
+        // 页面加载完成后初始化地图
+        window.onload = function() {
+            initMap();
+        };
+    </script>
+</body>
 </html>
